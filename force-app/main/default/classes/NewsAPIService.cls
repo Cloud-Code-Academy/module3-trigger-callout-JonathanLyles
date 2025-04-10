@@ -2,12 +2,15 @@
  * Service class to interact with the NewsAPI for fetching top headlines
  */
 public with sharing class NewsAPIService {
-    // TODO: Define API endpoint constants
+
+    // API endpoint
     private static final String API_NAMED_CREDENTIAL = 'callout:NewsAPI'; //https://newsapi.org
     private static final String API_ENDPOINT = '/v2/top-headlines';
-    
-    // TODO: Define default parameters
-    private static final Integer DEFAULT_PAGE_SIZE = 20; 
+
+    // Default parameters
+    private static final Integer DEFAULT_PAGE_SIZE = 20;  
+    private static final Integer DEFAULT_PAGE = 1;
+    private static final String API_KEY = API_Credential__mdt.getInstance('apiKey').NewsAPI_apiKey__c;
     
     /**
      * Fetches top headlines for a specified category with pagination support
@@ -17,13 +20,23 @@ public with sharing class NewsAPIService {
      * @return NewsAPIResponse The wrapper object containing the API response
      */
     public static NewsAPIResponse getTopHeadlinesByCategory(String category, Integer pageSize, Integer page) {
-        // TODO: Implement method to fetch headlines by category
-        // - Validate and set defaults for parameters
-        // - Build the request URL
-        // - Make the callout
-        // - Parse and return the response
+        //Set defaults if null
+        if(pageSize == null){
+            pageSize = DEFAULT_PAGE_SIZE;
+        }
+        if(page == null){
+            page = DEFAULT_PAGE;
+        }
         
-        return null;
+        // - Build the request URL
+        String endpoint = API_NAMED_CREDENTIAL + API_ENDPOINT + '?apiKey=' + API_KEY + '&category=' + category + '&pageSize=' + pageSize + '&page=' + page;
+
+        HttpResponse response = new HttpResponse();
+        
+        response = makeCallout(endpoint);
+        // - Parse and return the response
+        NewsAPIResponse newsData = parseResponse(response.getBody());
+        return newsData;    
     }
     
     /**
@@ -32,12 +45,32 @@ public with sharing class NewsAPIService {
      * @return HttpResponse The HTTP response
      */
     private static HttpResponse makeCallout(String endpoint) {
-        // TODO: Implement HTTP callout
+
+        //Create logging object
+        News_API_Log__c myLog = new News_API_Log__c();
+
         // - Create and configure HTTP request
-        // - Make the callout
-        // - Handle exceptions
+        HttpRequest request = new HttpRequest();
+        request.setMethod('GET');
+        request.setEndpoint(endpoint);
         
-        return null;
+        // - Make the callout
+        HttpResponse response = new Http().send(request); 
+        try{ 
+
+            // - Handle exceptions
+            if (response.getStatusCode() != 200) {
+                throw new NewsAPIException('Callout error');
+            }
+        }catch(NewsAPIException e){
+            myLog.Message__c = e.getMessage() + '. Status code: ' + response.getStatusCode();
+            myLog.Success__c = false;
+        }catch(Exception e){
+            myLog.Message__c = 'Unexpected exception. Message: ' + e.getMessage() + ' - Status code: ' + response.getStatusCode();
+        }
+        myLog.Message__c = 'Status code 200 - Callout successful.';
+        insert myLog;
+        return response;
     }
     
     /**
@@ -46,11 +79,21 @@ public with sharing class NewsAPIService {
      * @return NewsAPIResponse The parsed response object
      */
     private static NewsAPIResponse parseResponse(String jsonResponse) {
-        // TODO: Implement JSON parsing
+
+        //Initialize logger
+        News_API_Log__c myLog = new News_API_Log__c();
+
         // - Deserialize JSON to NewsAPIResponse
         // - Handle exceptions
-        
-        return null;
+        if(String.isBlank(jsonResponse) || String.isBlank(jsonResponse)){
+            myLog.Message__c = 'NewsAPI response is blank or empty';
+            throw new NewsAPIException('NewsAPI response is blank or empty');
+            
+        }else{
+            NewsAPIResponse newsData = (NewsAPIResponse) JSON.deserialize(jsonResponse, NewsAPIResponse.class);
+            myLog.Message__c = 'JSON body successfully parsed.';
+            return newsData;
+        }
     }
     
     /**
