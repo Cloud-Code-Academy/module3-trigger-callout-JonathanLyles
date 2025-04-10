@@ -9,8 +9,11 @@ public with sharing class NewsCategoryTriggerHandler {
      */
     public static void handleInsert(List<News_Category__c> newRecords) {
         // - Filter categories that need to be synced
-        List<String> categoryNames = filterCategoryNames(newRecords);
-        syncCategoriesWithFuture(categoryNames);
+        Map<String, Id> categoryNameToIdMap = new Map<String, Id>();
+        for(News_Category__c newRecord : newRecords){
+            categoryNameToIdMap.put(newRecord.Name, newRecord.Id);
+        }
+        syncCategoriesWithFuture(categoryNameToIdMap);
     }
     /**
      * Handles filtering of categories
@@ -49,54 +52,55 @@ public with sharing class NewsCategoryTriggerHandler {
      * @param categoryNames List of category names to sync
      */
     @future(callout=true)
-    public static void syncCategoriesWithFuture(List<String> categoryNames) {
+    public static void syncCategoriesWithFuture(Map<String, Id> categoryNameToIdMap) {
         // List of articles (Article__c) which will be inserted
         List<Article__c> articlesToInsert = new List<Article__c>();
-        // List of News_Category__c records to update
+
+        // List of categories (News_Category__c) which will be updated
         List<News_Category__c> categoriesToUpdate = new List<News_Category__c>();
-        // Map of categories to their callout response
-        Map<String, NewsAPIResponse> categoryToNewsAPIResponseMap = new Map<String, NewsAPIResponse>();
-        // Map of category names to their record Id
-        Map<String, Id> categoryNameToIdMap = new Map<String, Id>();
-        // Retrieve categories
-        List<News_Category__c> newsCategories = [SELECT Name, Id FROM News_Category__c WHERE Name IN :categoryNames];
-        // Builds categoryNameToIdMap
-        for(News_Category__c newsCategory : newsCategories){
-            //Todo: why is this not writing to map?
-            categoryNameToIdMap.put(newsCategory.Name, newsCategory.Id);
-        }
+        
         // Loop - Makes callouts to NewsAPI for each category
-        for(String category : categoryNames){
-            // Callout
-            NewsAPIResponse response = NewsAPIService.getTopHeadlinesByCategory(category, null, null);
-            // Add category name (key) and its response (value) to categoryToNewsAPIResponseMap
-            categoryToNewsAPIResponseMap.put(category, response);
-            // Converts the articles in response to a list of Article__c sObjects and adds the list to articlesToInsert 
-            articlesToInsert.addAll(response.toSObjects(category, categoryNameToIdMap.get(category)));
-            System.debug(articlesToInsert);
+        for(String categoryName : categoryNameToIdMap.keySet()){
+
+            try{
+                List<Article__c> articles = new List<Article__c>();
+
+                // Callout
+                NewsAPIResponse response = NewsAPIService.getTopHeadlinesByCategory(categoryName, null, null);
+                
+                if(response != null && !response.articles.isEmpty()){
+                    articles = response.toSObjects(categoryName, categoryNameToIdMap.get(categoryName));
+                    articlesToInsert.addAll(articles);
+                }else{
+                    System.debug(e.getMessage());
+                }
+            }catch(Exception e){
+                System.debug(e.getMessage());
+            }
+                  
             News_Category__c categoryToUpdate = new News_Category__c();
-            categoryToUpdate.Id = categoryNameToIdMap.get(category);
+            categoryToUpdate.Id = categoryNameToIdMap.get(categoryName);
             categoryToUpdate.Last_Synced__c = Datetime.now();
             categoryToUpdate.Sync__c = false;
             categoriesToUpdate.add(categoryToUpdate);
         }
+        //Insert articles
         try{
             if(articlesToInsert == null){
                 throw new NewsAPIException('NewsAPIException: No articles to insert.');
-            }else if(categoriesToUpdate == null){
-                throw new NewsAPIException('NewsAPIException: No categories to update.');
-            }
+            } 
             insert articlesToInsert;
-            System.debug('articles inserted: ' + articlesToInsert);
-            update categoriesToUpdate;
-        }catch(NewsAPIException e){
-            //TODO: LOG EXCEPTIONS
-        }catch(DMLException e){
-            System.debug('something happened dml exception: ' + e.getMessage());
-            //TODO: LOG EXCEPTIONS
         }catch(Exception e){
-            System.debug('Regular exception: ' + e.getMessage());
-            //TODO: LOG EXCEPTIONS
+            System.debug(e.getMessage());
+        }
+        //Update categories
+        try{
+            if(categoriesToUpdate == null){
+                throw new NewsAPIException('NewsAPIException: No categories to insert');
+            }
+            update categoriesToUpdate;
+        }catch(Exception e){
+            System.debug(e.getMessage());
         }
     }
     /**
@@ -111,11 +115,6 @@ public with sharing class NewsCategoryTriggerHandler {
             Integer pageSize = Integer.valueOf(categoryToSync.Pages__c);
             NewsCategoryQueueable queueableJob = new NewsCategoryQueueable(categoryId, categoryName, pageSize);
             System.enqueueJob(queueableJob);
-            //Todo: add error handling, and logging
         }
-         
-
-        // - Determine pages to sync for each category
-        // - Create and enqueue NewsCategoryQueueable job for each category
     }
 }
