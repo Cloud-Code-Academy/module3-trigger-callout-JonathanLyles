@@ -8,5 +8,3 @@ trigger NewsCategoryTrigger on News_Category__c (after insert, after update) {
         NewsCategoryTriggerHandler.handleUpdate(Trigger.new, Trigger.oldMap);
     }
 } 
-
-//todo: do I need trigger.oldMap in handleUpdate?
