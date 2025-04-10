@@ -15,20 +15,7 @@ public with sharing class NewsCategoryTriggerHandler {
         }
         syncCategoriesWithFuture(categoryNameToIdMap);
     }
-    /**
-     * Handles filtering of categories
-     * @param List<News_Category__c> newRecords - from Trigger.new
-     * @return List<String> categoryNames - List of category names where sync is true
-     */
-    private static List<String> filterCategoryNames(List<News_Category__c> newRecords){
-        List<String> categoryNames = new List<String>();
-        for(News_Category__c newRecord : newRecords){
-            if(newRecord.Sync__c == true){
-                categoryNames.add(newRecord.Name);
-            }
-        }
-        return categoryNames;
-    }
+
     /**
      * Handles after update events for News_Category__c
      * Uses Queueable Apex for callouts when Sync__c is true
@@ -72,7 +59,7 @@ public with sharing class NewsCategoryTriggerHandler {
                     articles = response.toSObjects(categoryName, categoryNameToIdMap.get(categoryName));
                     articlesToInsert.addAll(articles);
                 }else{
-                    System.debug(e.getMessage());
+                    throw new NewsAPIException('Something bad happened and this message is supposed to help.');
                 }
             }catch(Exception e){
                 System.debug(e.getMessage());
